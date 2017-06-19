@@ -1,13 +1,13 @@
 import React, { Component } from 'react';
-import { AppRegistry, StyleSheet, Text, View, TextInput, Button, Alert, AsyncStorage} from 'react-native';
+import { AppRegistry, StyleSheet, Text, View, TextInput, Button, Alert, AsyncStorage } from 'react-native';
 
 let SQLite = require('react-native-sqlite-storage');
-  var db;
+var db;
 export default class myApp extends Component {
 
   constructor(props) {
     super(props);
-    db = SQLite.openDatabase({name: 'test.db', createFromLocation: "~example.db", location: 'Library' }, this.openCB, this.errorCB);
+    db = SQLite.openDatabase({ name: 'test.db', createFromLocation: "~example.db", location: 'Library' }, this.openCB, this.errorCB);
     this.state = {
       name: '',
       bp: '',
@@ -16,10 +16,32 @@ export default class myApp extends Component {
       error: '',
       info: ''
     }
+    if (db) {
+      try {
+        db.transaction((tx) => {
+          try {
+            //tx.executeSql('DROP TABLE IF EXISTS Patient');
+            tx.executeSql('CREATE TABLE IF NOT EXISTS Patient('
+              + 'patient_id INTEGER,'
+              + 'name VARCHAR(50),'
+              + 'bp VARCHAR(50),'
+              + 'weight VARCHAR(50),'
+              + 'temperature VARCHAR(50))', [], () => this.setState({ info: "Creation Success" }), () => this.setState({ error: "Creation Error" }));
+          } catch (error) {
+            this.setState({ error: "Error in table creation :( " });
+          }
+        });
+      } catch (error) {
+        this.setState({ error: "ERROR in Table creation" });
+      }
+    }
+    else {
+      this.setState({ error: "DB not Ready Yet :(" });
+    }
   }
 
-  componentWillUnmount(){
-        db.close(()=>this.setState({info:"DB Closed"}),()=>this.setState({error:"Error Closing DB"}));
+  componentWillUnmount() {
+    db.close(() => this.setState({ info: "DB Closed" }), () => this.setState({ error: "Error Closing DB" }));
   }
 
   errorCB(err) {
@@ -31,35 +53,37 @@ export default class myApp extends Component {
   openCB() {
   }
 
-  submit() {
-    if(db){
-    try {
-      db.transaction((tx) => {
-        try {
-          tx.executeSql('DROP TABLE IF EXISTS Patient1;');
-          tx.executeSql('CREATE TABLE IF NOT EXISTS Patient1(name VARCHAR(55),bp VARCHAR(55),weight VARCHAR(55),temperature VARCHAR(55))', [], ()=>this.setState(info1:"Creation Success"), ()=>this.setState(error1:"Creation Error"));
-            this.setState({info:"Table Query !!!"});
-        } catch (error) {
-          this.setState({info:"Caught Error"+error});
-        }
-      });
-      this.setState({info:"Table created !!!"});
-     } catch (error) {
-       this.setState({error:"ERRORRRRR"});
+  SQLiteInsert() {
+    if (db) {
+      try {
+        db.transaction((tx) => {
+          tx.executeSql('INSERT INTO Patient(name,bp,weight,temperature) VALUES (\"'
+            + this.state.name + '\",\"' + this.state.bp + '\",\"' + this.state.weight + '\",\"' + this.state.temperature + '\");', [], () => this.setState({ info: "Insertion Success" }), () => this.setState({ error: "Insertion Error" }));
+        });
+      } catch (error) {
+        this.setState({ error: "Insertion Error" });
+      }
     }
-    try {
-      db.transaction((tx) => {
-        tx.executeSql('INSERT INTO Patient1 (name,bp,weight,temperature) VALUES (\'asd\', \'sdf\', \'asd\', \'yrty\');', [], ()=>this.setState(info1:"Insertion Success"), ()=>this.setState(error1:"Insertion Error"));
-      });
-      this.setState({error:"Record Inserted !!!"});
-     } catch (error) {
-       this.setState({error:"ERRORRRRR"});
+    else {
+      this.setState({ error: "DB not Ready :(" });
     }
   }
-  else{
-    this.setState({error:"DB not GOTTTT"});
+
+  SQLiteRetrieve() {
+    try {
+      db.transaction((tx) => {
+        tx.executeSql('SELECT * FROM Patient where name=\"' + this.state.name + '\";', [], (tx, results) => {
+          let row = results.rows.item(results.rows.length - 1);
+          this.setState({ name: row.name, bp: row.bp, weight: row.weight, temperature: row.temperature });
+        });
+      });
+    } catch (error) {
+      this.setState({ error: "SQLite Retrieve Error" });
+    }
   }
-    /*try {
+
+  AsyncInsert() {
+    try {
       AsyncStorage.setItem('patientData', JSON.stringify({
         name: this.state.name,
         bp: this.state.bp,
@@ -68,43 +92,22 @@ export default class myApp extends Component {
       }));
     } catch (error) {
       this.setState(error);
-    }*/
+    }
   }
 
-  retrieve() {
+  AsyncRetrieve() {
     try {
-      this.setState({info:"Retrieving..."});
-      db.transaction((tx) => {
-        this.setState({error:"After Trans..."});
-        tx.executeSql('SELECT * FROM Patient1', [], (tx, results) => {
-          this.setState({info:"# Rows Fetched"});
-          var len = results.rows.length;
-          
-          for (let i = 0; i < len; i++) {
-            let row = results.rows.item(i);
-            this.setState({ name: row.name, bp: row.bp, weight: row.weight, temperature: row.temperature });
-          }
-        });
-      });
-     } catch (error) {
-       this.setState({info:"ERRORRRRR"});
-    }
-
-
-    /*try {
       AsyncStorage.getItem('patientData').then((value) => {
         if (value) {
-          this.setState({ info: value });
           this.setState(JSON.parse(value));
         }
         else {
-          this.setState({ info: 'value Not received !!!' });
+          this.setState({info: 'Async value Not received' });
         }
       }).done();
     } catch (error) {
-      this.setState(error);
+      this.setState({error:"Async Retrieve Error"});
     }
-*/
   }
 
   render() {
@@ -155,47 +158,51 @@ export default class myApp extends Component {
         </View>
 
         <View style={{ flexDirection: 'row' }}>
+          <Text>SQLITE: </Text>
           <Button
-            onPress={() => this.submit()}
-            title="Submit !"
+            onPress={() => this.SQLiteInsert()}
+            title="Insert"
             color="blue"
             accessibilityLabel="Save data to database">
-            Submit !
+            Insert
         </Button>
           <Button
-            onPress={() => this.retrieve()}
-            title="Retrieve !"
+            onPress={() => this.SQLiteRetrieve()}
+            title="Retrieve"
             color="green"
             accessibilityLabel="Retrieve data from database">
-            Submit !
+            Retrieve
         </Button>
         </View>
 
-        <View>
-          <Text>Name: {this.state.name} BP: {this.state.bp} Temp:{this.state.temperature} Weight:{this.state.weight}</Text>
+        <View style={{ flexDirection: 'row' }}>
+          <Text>AsyncDB: </Text>
+          <Button
+            onPress={() => this.AsyncInsert()}
+            title="Insert"
+            color="blue"
+            accessibilityLabel="Save data to database">
+            Insert
+        </Button>
+          <Button
+            onPress={() => this.AsyncRetrieve()}
+            title="Retrieve"
+            color="green"
+            accessibilityLabel="Retrieve data from database">
+            Retrieve
+        </Button>
         </View>
-
-        <View>
-          <Text>Error: {this.state.error}</Text>
-        </View>
-
         <View>
           <Text>Info: {this.state.info}</Text>
         </View>
-
         <View>
-          <Text>Error1: {this.state.error1}</Text>
-        </View>
-
-        <View>
-          <Text>Info1: {this.state.info1}</Text>
+          <Text>Error: {this.state.error}</Text>
         </View>
       </View>
 
     );
   }
 }
-//<Button1 blabel='Submit' onPressAction={this.onPressAction().bind(this)}/>
 const styles = StyleSheet.create({
   container: {
     flex: 1,
